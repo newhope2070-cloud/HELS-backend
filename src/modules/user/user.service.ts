@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
 import { AdminUserRepo } from 'src/common/repositories/admin-user-repo';
@@ -9,7 +15,8 @@ import { AdminUser } from './entities/admin-user.entity';
 import { CustomerUserDocument } from './entities/customer-user.entity';
 
 
-import { CustomerStatusEnum, ProviderEnum } from 'src/common/enums/userEnum';
+import { CustomerStatusEnum, ProviderEnum, RoleEnum } from 'src/common/enums/userEnum';
+import { hash } from 'src/common/services/securityService/hash';
 import { PushNotificationService } from '../push-notification/push-notification.service';
 import { RegisterPushTokenDto, RemovePushTokenDto } from '../push-notification/dto/push-token.dto';
 import { WalletRepo } from 'src/common/repositories/wallet-repo';
@@ -17,7 +24,9 @@ import { BookingGateway } from '../booking/booking.gateway';
 import { BookingService } from '../booking/booking.service';
 
 @Injectable()
-export class UserService {
+export class UserService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     private readonly customerUserRepo: CustomerUserRepo,
     private readonly adminUserRepo: AdminUserRepo,
@@ -27,6 +36,69 @@ export class UserService {
     private readonly bookingGateway: BookingGateway,
     private readonly bookingService: BookingService,
   ) { }
+
+  async onApplicationBootstrap() {
+    await this.seedSuperAdminIfNoUser();
+  }
+
+  async seedSuperAdminIfNoUser() {
+    try {
+      const [adminCount, customerCount] = await Promise.all([
+        this.adminUserRepo.countDocuments(),
+        this.customerUserRepo.countDocuments(),
+      ]);
+
+      const totalUsers = adminCount + customerCount;
+
+      // Check if no user found in the DB (or if no admin exists)
+      if (totalUsers === 0 || adminCount === 0) {
+        this.logger.warn(
+          `No admin users found in database (total users: ${totalUsers}). Bootstrapping default super admin...`,
+        );
+        const superAdmin = await this.adminUserRepo.create({
+          userName: 'admin',
+          email: 'admin@venue.com',
+          password: hash({ text: 'Admin123456' }),
+          role: RoleEnum.superAdmin,
+          locale: 'en',
+        });
+        this.logger.log(
+          `Super admin successfully created: username='${superAdmin.userName}', email='${superAdmin.email}', role='${superAdmin.role}'`,
+        );
+        return;
+      }
+
+      // Check if super admin with username 'admin' or email 'admin@venue.com' exists
+      const existingSuperAdmin = await this.adminUserRepo.findOne({
+        filter: {
+          $or: [
+            { userName: 'admin' },
+            { email: 'admin@venue.com' },
+          ],
+        },
+      });
+
+      if (!existingSuperAdmin) {
+        this.logger.log('Super admin "admin" not found among existing admins. Creating super admin...');
+        const superAdmin = await this.adminUserRepo.create({
+          userName: 'admin',
+          email: 'admin@venue.com',
+          password: hash({ text: 'Admin123456' }),
+          role: RoleEnum.superAdmin,
+          locale: 'en',
+        });
+        this.logger.log(
+          `Super admin created: username='${superAdmin.userName}', email='${superAdmin.email}', role='${superAdmin.role}'`,
+        );
+      } else {
+        this.logger.log(
+          `Super admin user already exists: username='${existingSuperAdmin.userName}', email='${existingSuperAdmin.email}'`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error('Error during super admin database bootstrap seeding:', err?.message || err);
+    }
+  }
 
   async createCustomer(dto: { userName: string; phone: string }) {
     const existing = await this.customerUserRepo.findOne({ filter: { phone: dto.phone } });

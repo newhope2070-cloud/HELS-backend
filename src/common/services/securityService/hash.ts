@@ -2,12 +2,13 @@ import { hashSync, compareSync } from 'bcrypt';
 
 export function hash({
   text,
-  salt_rounds = Number(process.env.SALT_ROUND),
+  salt_rounds = Number(process.env.SALT_ROUND) || 10,
 }: {
   text: string;
   salt_rounds?: number;
 }): string {
-  return hashSync(text.toString(), Number(salt_rounds));
+  const rounds = Number(salt_rounds) || 10;
+  return hashSync(text.toString(), rounds);
 }
 
 export function compare({

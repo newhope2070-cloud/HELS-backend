@@ -57,10 +57,10 @@ export class CustomerVerifyOtpDto {
 
 export class DashboardLoginDto {
   @ApiProperty({
-    description: 'Dashboard staff/admin email address',
-    example: 'admin@sportsvenue.com',
+    description: 'Dashboard staff/admin email or username',
+    example: 'admin',
   })
-  @IsEmail()
+  @IsString()
   @IsNotEmpty()
   email: string;
 

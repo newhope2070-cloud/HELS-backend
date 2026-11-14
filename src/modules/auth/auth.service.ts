@@ -168,11 +168,18 @@ export class AuthService {
   // --- DASHBOARD ADMIN / EMPLOYEE AUTH ---
   async loginDashboard(body: DashboardLoginDto): Promise<any> {
     const { email, password } = body;
-    const normalizedEmail = email.toLowerCase().trim();
+    const identifier = (email || '').trim();
+    const normalizedIdentifier = identifier.toLowerCase();
 
     const admin = await this.adminUserRepo.findOne({
-      filter: { email: normalizedEmail },
-      options: { select: '+password' }
+      filter: {
+        $or: [
+          { email: normalizedIdentifier },
+          { userName: identifier },
+          { userName: normalizedIdentifier },
+        ],
+      },
+      options: { select: '+password' },
     });
 
     if (!admin || !admin.password) {
